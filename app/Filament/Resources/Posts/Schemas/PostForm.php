@@ -5,7 +5,7 @@ namespace App\Filament\Resources\Posts\Schemas;
 use Filament\Forms;
 //use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\DateTimePicker;
@@ -18,16 +18,54 @@ class PostForm
     {
         return $schema
             ->components([
-                Section::make('Post Content')
+                Section::make('Post Content & Publishing')
                     ->schema([
                         TextInput::make('title')
                             ->required()
                             ->maxLength(255)
                             ->columnSpanFull(),
 
-                        Textarea::make('body')
+                        RichEditor::make('body')
                             ->required()
-                            ->rows(6)
+                            ->fileAttachmentsDisk('public')
+                            ->fileAttachmentsDirectory('posts/attachments')
+                            ->toolbarButtons([
+                                'attachFiles',
+                                'blockquote',
+                                'bold',
+                                'bulletList',
+                                'codeBlock',
+                                'h2',
+                                'h3',
+                                'italic',
+                                'link',
+                                'orderedList',
+                                'redo',
+                                'strike',
+                                'underline',
+                                'undo',
+                            ])
+                            ->columnSpanFull(),
+
+                        CheckboxList::make('social_medias')
+                            ->label('Social Media Platforms')
+                            ->options([
+                                'facebook' => 'Facebook',
+                                'twitter' => 'Twitter/X',
+                                'instagram' => 'Instagram',
+                                'linkedin' => 'LinkedIn',
+                                'tiktok' => 'TikTok',
+                                'youtube' => 'YouTube',
+                                'telegram' => 'Telegram',
+                            ])
+                            ->columns(2)
+                            ->columnSpanFull(),
+
+                        DateTimePicker::make('schedule_time')
+                            ->label('Schedule Time')
+                            ->native(false)
+                            ->timezone('UTC')
+                            ->helperText('Leave empty to publish immediately')
                             ->columnSpanFull(),
                     ])
                     ->columns(2),
@@ -51,29 +89,6 @@ class PostForm
                     ])
                     ->columns(1)
                     ->collapsible(),
-
-                Section::make('Social Media & Scheduling')
-                    ->schema([
-                        CheckboxList::make('social_medias')
-                            ->label('Social Media Platforms')
-                            ->options([
-                                'facebook' => 'Facebook',
-                                'twitter' => 'Twitter/X',
-                                'instagram' => 'Instagram',
-                                'linkedin' => 'LinkedIn',
-                                'tiktok' => 'TikTok',
-                                'youtube' => 'YouTube',
-                            ])
-                            ->columns(2)
-                            ->columnSpanFull(),
-
-                        DateTimePicker::make('schedule_time')
-                            ->label('Schedule Time')
-                            ->native(false)
-                            ->timezone('UTC')
-                            ->helperText('Leave empty to publish immediately')
-                            ->columnSpanFull(),
-                    ]),
             ]);
     }
 }

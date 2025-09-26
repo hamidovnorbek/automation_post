@@ -11,9 +11,10 @@ return new class extends Migration
         Schema::create('posts', function (Blueprint $table) {
             $table->id();
             $table->string('title');
-            $table->longText('body');
+            $table->json('body');
             $table->json('photos')->nullable();
             $table->json('videos')->nullable();
+            $table->json('social_medias')->nullable();
             $table->timestamp('schedule_time')->nullable();
             $table->timestamps();
         });
