@@ -35,4 +35,20 @@ return [
         ],
     ],
 
+    'facebook' => [
+        'page_id' => env('FACEBOOK_PAGE_ID'),
+        'access_token' => env('FACEBOOK_ACCESS_TOKEN'),
+    ],
+
+    'instagram' => [
+        'access_token' => env('IG_ACCESS_TOKEN'),
+        'business_account_id' => env('IG_USER_ID'),
+    ],
+
+    'telegram' => [
+        'bot_token' => env('TELEGRAM_BOT_TOKEN'),
+        'chat_id' => env('TELEGRAM_CHAT_ID'),
+    ],
+
+
 ];

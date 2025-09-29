@@ -10,11 +10,14 @@ return new class extends Migration
     {
         Schema::create('post_socials', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('post_id')->constrained()->onDelete('cascade');
-            $table->string('platform');
+            $table->foreignId('post_id')->constrained()->cascadeOnDelete();
+            $table->string('platform', 32);
             $table->enum('status', ['pending','posted','failed'])->default('pending');
-            $table->text('response')->nullable();
+            $table->json('response')->nullable();
             $table->timestamps();
+
+            $table->unique(['post_id', 'platform']);
+            $table->index(['platform', 'status']);
         });
     }
 
