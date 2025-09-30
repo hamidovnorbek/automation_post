@@ -37,17 +37,22 @@ return [
 
     'facebook' => [
         'page_id' => env('FACEBOOK_PAGE_ID'),
-        'access_token' => env('FACEBOOK_ACCESS_TOKEN'),
+        'page_access_token' => env('FACEBOOK_PAGE_ACCESS_TOKEN'),
+        'access_token' => env('FACEBOOK_ACCESS_TOKEN'), // fallback
+        'app_secret' => env('FACEBOOK_APP_SECRET'),
+        'api_version' => env('FACEBOOK_GRAPH_VERSION', 'v18.0'),
     ],
 
     'instagram' => [
-        'access_token' => env('IG_ACCESS_TOKEN'),
-        'business_account_id' => env('IG_USER_ID'),
+        'access_token' => env('INSTAGRAM_ACCESS_TOKEN'),
+        'business_account_id' => env('INSTAGRAM_BUSINESS_ACCOUNT_ID'),
+        'api_version' => env('INSTAGRAM_GRAPH_VERSION', 'v18.0'),
     ],
 
     'telegram' => [
         'bot_token' => env('TELEGRAM_BOT_TOKEN'),
         'chat_id' => env('TELEGRAM_CHAT_ID'),
+        'channel_id' => env('TELEGRAM_CHANNEL_ID'),
     ],
 
 

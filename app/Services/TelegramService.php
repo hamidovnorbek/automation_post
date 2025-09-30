@@ -154,4 +154,80 @@ if (!$this->isValidVideo($path, ['mp4','mov','webm','avi'], 50 * 1024 * 1024)) {
             throw new \RuntimeException($message . ': ' . $response->body());
         }
     }
+
+    /**
+     * Test Telegram Bot API connection
+     */
+    public function testPostPhoto(): array
+    {
+        try {
+            $botToken = config('services.telegram.bot_token');
+            $chatId = config('services.telegram.channel_id') ?? config('services.telegram.chat_id');
+
+            if (!$botToken) {
+                return [
+                    'success' => false,
+                    'message' => 'Telegram bot token not configured',
+                    'configured' => false
+                ];
+            }
+
+            if (!$chatId) {
+                return [
+                    'success' => false,
+                    'message' => 'Telegram chat ID not configured',
+                    'configured' => false
+                ];
+            }
+
+            // Test bot API access by getting bot info
+            $response = Http::get($this->apiUrl('getMe'));
+
+            if (!$response->successful()) {
+                return [
+                    'success' => false,
+                    'message' => 'Telegram API error: ' . $response->body(),
+                    'configured' => true,
+                    'api_response' => $response->json()
+                ];
+            }
+
+            $botInfo = $response->json();
+
+            // Test chat access by getting chat info
+            $chatResponse = Http::post($this->apiUrl('getChat'), [
+                'chat_id' => $chatId
+            ]);
+
+            $chatInfo = null;
+            if ($chatResponse->successful()) {
+                $chatInfo = $chatResponse->json()['result'] ?? null;
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Telegram API connection successful',
+                'configured' => true,
+                'bot_info' => [
+                    'id' => $botInfo['result']['id'] ?? null,
+                    'username' => $botInfo['result']['username'] ?? null,
+                    'first_name' => $botInfo['result']['first_name'] ?? null,
+                ],
+                'chat_info' => $chatInfo ? [
+                    'id' => $chatInfo['id'] ?? null,
+                    'title' => $chatInfo['title'] ?? null,
+                    'type' => $chatInfo['type'] ?? null,
+                ] : null,
+                'chat_accessible' => $chatResponse->successful()
+            ];
+
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'message' => 'Telegram test failed: ' . $e->getMessage(),
+                'configured' => true,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
 }

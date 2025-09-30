@@ -11,11 +11,16 @@ return new class extends Migration
         Schema::create('posts', function (Blueprint $table) {
             $table->id();
             $table->string('title');
-            $table->json('body');
-            $table->json('photos')->nullable();
-            $table->json('videos')->nullable();
-            $table->json('social_medias')->nullable();
+            $table->json('body'); // Rich editor content
+            $table->json('photos')->nullable(); // Array of photo URLs
+            $table->json('videos')->nullable(); // Array of video URLs
+            $table->json('social_medias'); // Selected platforms
             $table->timestamp('schedule_time')->nullable();
+            $table->enum('status', ['draft', 'processing_media', 'ready_to_publish', 'scheduled', 'publishing', 'published', 'failed'])->default('draft');
+            $table->json('publication_status')->nullable(); // Platform-specific statuses
+            $table->integer('total_platforms')->default(0);
+            $table->integer('published_platforms')->default(0);
+            $table->integer('failed_platforms')->default(0);
             $table->timestamps();
         });
     }

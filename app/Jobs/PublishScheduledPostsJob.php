@@ -2,7 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Models\Post;
 use App\Services\SocialMediaPublisher;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -11,36 +10,26 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
-class PublishPostJob implements ShouldQueue
+class PublishScheduledPostsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
-    public int $maxExceptions = 1;
-    public int $timeout = 300; // 5 minutes
-
-    public function __construct(
-        public Post $post
-    ) {}
+    public int $timeout = 600; // 10 minutes
 
     public function handle(SocialMediaPublisher $publisher): void
     {
-        Log::info("Starting publication job for post {$this->post->id}");
+        Log::info('Starting scheduled posts publication job');
         
         try {
-            $results = $publisher->publishPost($this->post);
+            $publishedCount = $publisher->publishScheduledPosts();
             
-            $successCount = count(array_filter($results));
-            $totalCount = count($results);
-            
-            Log::info("Publication job completed for post {$this->post->id}", [
-                'success_count' => $successCount,
-                'total_count' => $totalCount,
-                'results' => $results
+            Log::info("Scheduled posts publication completed", [
+                'published_count' => $publishedCount
             ]);
             
         } catch (\Exception $e) {
-            Log::error("Publication job failed for post {$this->post->id}: " . $e->getMessage(), [
+            Log::error('Scheduled posts publication job failed: ' . $e->getMessage(), [
                 'exception' => $e
             ]);
             
@@ -50,7 +39,7 @@ class PublishPostJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::error("PublishPostJob permanently failed for post {$this->post->id}", [
+        Log::error('PublishScheduledPostsJob permanently failed', [
             'exception' => $exception->getMessage(),
             'trace' => $exception->getTraceAsString()
         ]);

@@ -210,4 +210,59 @@ class FacebookService
 
         return true;
     }
+
+    /**
+     * Test Facebook API connection and page access
+     */
+    public function testPostPhoto(): array
+    {
+        try {
+            $pageId = config('services.facebook.page_id');
+            $token = config('services.facebook.page_access_token') ?? config('services.facebook.access_token');
+
+            if (!$pageId || !$token) {
+                return [
+                    'success' => false,
+                    'message' => 'Facebook credentials not configured (missing page_id or access_token)',
+                    'configured' => false
+                ];
+            }
+
+            // Test API access by getting page information
+            $response = Http::get("{$this->graphUrl}/{$pageId}", [
+                'fields' => 'id,name,access_token',
+                'access_token' => $token,
+            ]);
+
+            if (!$response->successful()) {
+                return [
+                    'success' => false,
+                    'message' => 'Facebook API error: ' . $response->body(),
+                    'configured' => true,
+                    'api_response' => $response->json()
+                ];
+            }
+
+            $data = $response->json();
+
+            return [
+                'success' => true,
+                'message' => 'Facebook API connection successful',
+                'configured' => true,
+                'page_info' => [
+                    'id' => $data['id'] ?? null,
+                    'name' => $data['name'] ?? null,
+                ],
+                'api_version' => 'v23.0'
+            ];
+
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'message' => 'Facebook test failed: ' . $e->getMessage(),
+                'configured' => true,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
 }
