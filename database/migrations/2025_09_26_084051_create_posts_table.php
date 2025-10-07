@@ -16,7 +16,7 @@ return new class extends Migration
             $table->json('videos')->nullable(); // Array of video URLs
             $table->json('social_medias'); // Selected platforms
             $table->timestamp('schedule_time')->nullable();
-            $table->enum('status', ['draft', 'processing_media', 'ready_to_publish', 'scheduled', 'publishing', 'published', 'failed'])->default('draft');
+            $table->enum('status', ['draft', 'processing_media', 'ready_to_publish', 'sent_to_n8n', 'scheduled', 'publishing', 'published', 'failed'])->default('draft');
             $table->json('publication_status')->nullable(); // Platform-specific statuses
             $table->integer('total_platforms')->default(0);
             $table->integer('published_platforms')->default(0);

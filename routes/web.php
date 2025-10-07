@@ -1,83 +1,79 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Services\InstagramService;
-use App\Services\FacebookService;
-use App\Services\TelegramService;
-use App\Services\SocialMediaPublisher;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Artisan;
 use App\Models\Post;
-use App\Models\PostPublication;
+use App\Jobs\SendToN8nJob;
 use Illuminate\Http\Request;
 
 Route::get('/', function () {
     return view('welcome');
 });
 
-// Test routes for each social media service
+// Test routes for n8n integration
 Route::prefix('test')->group(function () {
     
-    Route::get('/instagram', function (InstagramService $service) {
-        return $service->testPostPhoto();
-    });
-    
-    Route::get('/facebook', function (FacebookService $service) {
+    Route::get('/n8n', function () {
         try {
-            $result = $service->testPostPhoto();
+            // Test n8n webhook connectivity
+            $response = Http::timeout(10)->post(config('services.n8n.webhook_url'), [
+                'action' => 'test_connection',
+                'timestamp' => now()->toISOString(),
+                'test_data' => [
+                    'message' => 'Test connection from Laravel',
+                    'source' => 'automation_post_system'
+                ]
+            ]);
+
             return response()->json([
                 'status' => 'success',
-                'message' => 'Facebook test completed',
-                'data' => $result
+                'message' => 'n8n connection test completed',
+                'n8n_webhook_url' => config('services.n8n.webhook_url'),
+                'response_status' => $response->status(),
+                'response_body' => $response->json()
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Facebook test failed: ' . $e->getMessage()
+                'message' => 'n8n connection test failed: ' . $e->getMessage(),
+                'n8n_webhook_url' => config('services.n8n.webhook_url')
             ], 500);
         }
     });
     
-    Route::get('/telegram', function (TelegramService $service) {
+    Route::get('/send-sample-post', function () {
         try {
-            $result = $service->testPostPhoto();
+            // Create and save a sample post for testing
+            $post = Post::create([
+                'title' => 'Test Post - ' . now()->format('Y-m-d H:i:s'),
+                'body' => [
+                    'content' => 'This is a test post for n8n integration testing. 🚀'
+                ],
+                'social_medias' => ['facebook', 'instagram', 'telegram'],
+                'status' => 'ready_to_publish',
+            ]);
+            
+            // Dispatch to n8n
+            SendToN8nJob::dispatch($post);
+            
             return response()->json([
                 'status' => 'success',
-                'message' => 'Telegram test completed',
-                'data' => $result
+                'message' => 'Sample post saved and sent to n8n queue',
+                'post_data' => [
+                    'id' => $post->id,
+                    'title' => $post->title,
+                    'body' => $post->body,
+                    'social_medias' => $post->social_medias,
+                    'status' => $post->status
+                ]
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Telegram test failed: ' . $e->getMessage()
-            ], 500);
-        }
-    });
-    
-    Route::get('/all-services', function (SocialMediaPublisher $publisher) {
-        try {
-            $results = [];
-            
-            // Test each service
-            $services = ['facebook', 'instagram', 'telegram'];
-            foreach ($services as $platform) {
-                try {
-                    $service = $publisher->getService($platform);
-                    $results[$platform] = $service->testPostPhoto();
-                } catch (\Exception $e) {
-                    $results[$platform] = [
-                        'error' => $e->getMessage()
-                    ];
-                }
-            }
-            
-            return response()->json([
-                'status' => 'success',
-                'message' => 'All services tested',
-                'results' => $results
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Test failed: ' . $e->getMessage()
+                'message' => 'Sample post sending failed: ' . $e->getMessage()
             ], 500);
         }
     });
@@ -86,22 +82,40 @@ Route::prefix('test')->group(function () {
 // API routes for external integrations
 Route::prefix('api')->group(function () {
     
-    // Webhook endpoint for external services
-    Route::post('/webhook/social-post', function (Request $request) {
+    // Webhook endpoint for n8n or other external services
+    Route::post('/webhook/n8n-response', function (Request $request) {
         try {
-            \Log::info('Webhook received:', $request->all());
+            Log::info('n8n response webhook received:', $request->all());
+            
+            // Here you could update post status based on n8n response
+            $postId = $request->input('post_id');
+            $status = $request->input('status'); // success, failed, etc.
+            $results = $request->input('results', []);
+            
+            if ($postId && $status) {
+                $post = Post::find($postId);
+                if ($post) {
+                    $post->update([
+                        'status' => $status === 'success' ? 'published' : 'failed',
+                        'publication_status' => [
+                            'n8n_response' => $request->all(),
+                            'updated_at' => now()->toISOString()
+                        ]
+                    ]);
+                }
+            }
             
             return response()->json([
                 'status' => 'success',
-                'message' => 'Webhook received successfully',
+                'message' => 'n8n response processed successfully',
                 'timestamp' => now()->toISOString()
             ]);
         } catch (\Exception $e) {
-            \Log::error('Webhook error: ' . $e->getMessage());
+            Log::error('n8n response webhook error: ' . $e->getMessage());
             
             return response()->json([
                 'status' => 'error',
-                'message' => 'Webhook processing failed'
+                'message' => 'n8n response processing failed'
             ], 500);
         }
     });
@@ -117,18 +131,11 @@ Route::prefix('api')->group(function () {
                     'id' => $post->id,
                     'title' => $post->title,
                     'status' => $post->status,
-                    'progress' => $post->publication_progress,
-                    'scheduled_at' => $post->scheduled_at,
-                    'published_at' => $post->published_at,
-                    'publications' => $post->publications->map(function ($pub) {
-                        return [
-                            'platform' => $pub->platform,
-                            'status' => $pub->status,
-                            'published_at' => $pub->published_at,
-                            'external_id' => $pub->external_id,
-                            'error_message' => $pub->error_message,
-                        ];
-                    })
+                    'social_medias' => $post->social_medias,
+                    'schedule_time' => $post->schedule_time,
+                    'publication_status' => $post->publication_status,
+                    'created_at' => $post->created_at,
+                    'updated_at' => $post->updated_at,
                 ]
             ]);
         } catch (\Exception $e) {
@@ -139,28 +146,25 @@ Route::prefix('api')->group(function () {
         }
     });
     
-    // Retry failed publications
-    Route::post('/posts/{id}/retry', function ($id, SocialMediaPublisher $publisher) {
+    // Retry sending post to n8n
+    Route::post('/posts/{id}/retry-n8n', function ($id) {
         try {
             $post = Post::findOrFail($id);
-            $failedPublications = $post->publications()->where('status', 'failed')->get();
             
-            if ($failedPublications->isEmpty()) {
+            if (!in_array($post->status, ['failed', 'sent_to_n8n'])) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'No failed publications to retry'
+                    'message' => 'Post is not in a retryable state'
                 ], 400);
             }
             
-            $results = [];
-            foreach ($failedPublications as $publication) {
-                $results[] = $publication->retry();
-            }
+            // Dispatch to n8n again
+            SendToN8nJob::dispatch($post);
             
             return response()->json([
                 'status' => 'success',
-                'message' => 'Retry initiated for failed publications',
-                'retried_count' => count($results)
+                'message' => 'Post resent to n8n queue',
+                'post_id' => $post->id
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -177,8 +181,8 @@ if (app()->environment('local')) {
         
         Route::get('/queue-status', function () {
             try {
-                $totalJobs = \DB::table('jobs')->count();
-                $failedJobs = \DB::table('failed_jobs')->count();
+                $totalJobs = DB::table('jobs')->count();
+                $failedJobs = DB::table('failed_jobs')->count();
                 
                 return response()->json([
                     'status' => 'success',
@@ -198,10 +202,8 @@ if (app()->environment('local')) {
         
         Route::get('/config-check', function () {
             $configs = [
-                'Facebook Page Access Token' => config('services.facebook.page_access_token') ? '✓ Set' : '✗ Missing',
-                'Instagram Access Token' => config('services.instagram.access_token') ? '✓ Set' : '✗ Missing',
-                'Telegram Bot Token' => config('services.telegram.bot_token') ? '✓ Set' : '✗ Missing',
-                'Telegram Channel ID' => config('services.telegram.channel_id') ? '✓ Set' : '✗ Missing',
+                'n8n Webhook URL' => config('services.n8n.webhook_url'),
+                'n8n API Key' => config('services.n8n.api_key') ? '✓ Set' : '✗ Missing',
                 'Queue Connection' => config('queue.default'),
                 'Database Connection' => config('database.default'),
                 'App Environment' => app()->environment(),
@@ -216,10 +218,10 @@ if (app()->environment('local')) {
         
         Route::get('/clear-cache', function () {
             try {
-                \Artisan::call('cache:clear');
-                \Artisan::call('config:clear');
-                \Artisan::call('route:clear');
-                \Artisan::call('view:clear');
+                Artisan::call('cache:clear');
+                Artisan::call('config:clear');
+                Artisan::call('route:clear');
+                Artisan::call('view:clear');
                 
                 return response()->json([
                     'status' => 'success',
@@ -229,34 +231,6 @@ if (app()->environment('local')) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Cache clearing failed: ' . $e->getMessage()
-                ], 500);
-            }
-        });
-        
-        Route::get('/create-test-post', function (SocialMediaPublisher $publisher) {
-            try {
-                $post = Post::create([
-                    'title' => 'Test Post - ' . now()->format('Y-m-d H:i:s'),
-                    'body' => '<p>This is a test post created via debug route. It contains <strong>rich text formatting</strong> and will be published to all configured platforms.</p>',
-                    'platforms' => ['facebook', 'instagram', 'telegram'],
-                    'status' => 'draft',
-                    'user_id' => 1, // Assumes user with ID 1 exists
-                ]);
-                
-                // Immediately publish for testing
-                $post->update(['status' => 'publishing']);
-                $publisher->publishToAllPlatforms($post);
-                
-                return response()->json([
-                    'status' => 'success',
-                    'message' => 'Test post created and publishing initiated',
-                    'post_id' => $post->id,
-                    'view_url' => url("/api/posts/{$post->id}/status")
-                ]);
-            } catch (\Exception $e) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Test post creation failed: ' . $e->getMessage()
                 ], 500);
             }
         });

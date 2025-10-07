@@ -55,5 +55,10 @@ return [
         'channel_id' => env('TELEGRAM_CHANNEL_ID'),
     ],
 
+    'n8n' => [
+        'webhook_url' => env('N8N_WEBHOOK_URL', 'http://65.2.142.106:5678/webhook/31a37984-c70a-447c-a9f0-765d1cf98d13'),
+        'api_key' => env('N8N_API_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwZTA4NDEzNy1hMWJhLTQ1YzctYjQyOC0xYWE5ZmVkMGE0ZTUiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzU5ODMyMzI5LCJleHAiOjE3NjQ5OTcyMDB9.Di92YNJuSwLGBh__4nLTN2ARoxRDI9OxiAu3Jv8LjPo'),
+    ],
+
 
 ];

@@ -71,21 +71,21 @@ class Post extends Model
         parent::boot();
 
         static::created(function ($post) {
-            // Skip publication record creation if files need processing
+            // Skip n8n processing if files need processing
             if ($post->hasUnprocessedFiles()) {
                 $post->update(['status' => 'processing_media']);
                 \App\Jobs\ProcessMediaUploadJob::dispatch($post);
             } else {
-                $post->createPublicationRecords();
-                self::sendWebhook($post, 'created');
+                // Send directly to n8n if no media processing needed
+                \App\Jobs\SendToN8nJob::dispatch($post);
             }
         });
 
         static::updated(function ($post) {
-            if ($post->wasChanged('social_medias')) {
-                $post->syncPublicationRecords();
+            // Optional: Send update webhook to n8n for tracking
+            if ($post->wasChanged(['title', 'body', 'social_medias', 'status'])) {
+                self::sendWebhook($post, 'updated');
             }
-            self::sendWebhook($post, 'updated');
         });
     }
 
@@ -99,76 +99,13 @@ class Post extends Model
         return $this->hasMany(PostSocial::class);
     }
 
-    public function createPublicationRecords()
-    {
-        if (empty($this->social_medias)) return;
-
-        foreach ($this->social_medias as $platform) {
-            $this->publications()->create([
-                'platform' => $platform,
-                'status' => $this->schedule_time ? 'scheduled' : 'pending',
-                'scheduled_for' => $this->schedule_time,
-            ]);
-        }
-
-        $this->update([
-            'total_platforms' => count($this->social_medias),
-            'status' => $this->schedule_time ? 'scheduled' : 'draft'
-        ]);
-    }
-
-    public function syncPublicationRecords()
-    {
-        // Remove publications for deselected platforms
-        $currentPlatforms = $this->social_medias ?? [];
-        $this->publications()->whereNotIn('platform', $currentPlatforms)->delete();
-
-        // Add publications for new platforms
-        $existingPlatforms = $this->publications()->pluck('platform')->toArray();
-        $newPlatforms = array_diff($currentPlatforms, $existingPlatforms);
-
-        foreach ($newPlatforms as $platform) {
-            $this->publications()->create([
-                'platform' => $platform,
-                'status' => $this->schedule_time ? 'scheduled' : 'pending',
-                'scheduled_for' => $this->schedule_time,
-            ]);
-        }
-
-        $this->refreshPublicationCounts();
-    }
-
-    public function refreshPublicationCounts()
-    {
-        $published = $this->publications()->where('status', 'published')->count();
-        $failed = $this->publications()->where('status', 'failed')->count();
-        $total = $this->publications()->count();
-
-        $status = 'draft';
-        if ($total > 0) {
-            if ($published == $total) {
-                $status = 'published';
-            } elseif ($published > 0 || $failed > 0) {
-                $status = 'publishing';
-            } elseif ($this->schedule_time && $this->schedule_time->isFuture()) {
-                $status = 'scheduled';
-            }
-        }
-
-        $this->update([
-            'total_platforms' => $total,
-            'published_platforms' => $published,
-            'failed_platforms' => $failed,
-            'status' => $status,
-        ]);
-    }
-
     public function getStatusColorAttribute()
     {
         return match($this->status) {
             'draft' => 'gray',
             'processing_media' => 'orange',
             'ready_to_publish' => 'blue',
+            'sent_to_n8n' => 'purple',
             'scheduled' => 'blue',
             'publishing' => 'yellow',
             'published' => 'green',
@@ -179,8 +116,16 @@ class Post extends Model
 
     public function getProgressPercentageAttribute()
     {
-        if ($this->total_platforms === 0) return 0;
-        return round(($this->published_platforms / $this->total_platforms) * 100);
+        // For n8n workflow, progress is based on status
+        return match($this->status) {
+            'draft' => 0,
+            'processing_media' => 25,
+            'ready_to_publish' => 50,
+            'sent_to_n8n' => 75,
+            'published' => 100,
+            'failed' => 0,
+            default => 0
+        };
     }
 
     public function isScheduled()
@@ -199,6 +144,13 @@ class Post extends Model
     public static function sendWebhook($post, $action)
     {
         try {
+            $webhookUrl = config('services.n8n.webhook_url');
+            
+            if (!$webhookUrl) {
+                Log::warning("Webhook URL not configured, skipping webhook for post {$post->id}");
+                return;
+            }
+
             $payload = [
                 'action' => $action,
                 'post' => [
@@ -218,7 +170,7 @@ class Post extends Model
             ];
 
             Http::timeout(10)
-                ->post('http://localhost:5678/webhook/social-post', $payload);
+                ->post($webhookUrl, $payload);
 
             Log::info("Webhook sent successfully for post {$post->id} - {$action}");
         } catch (\Exception $e) {

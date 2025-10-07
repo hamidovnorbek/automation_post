@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Post;
+use App\Jobs\SendToN8nJob;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -25,7 +26,7 @@ class ProcessMediaUploadJob implements ShouldQueue
     {
         $this->post = $post;
         $this->tempFiles = $tempFiles;
-        $this->onQueue('social-media');
+        $this->onQueue('default'); // Use default queue
     }
 
     /**
@@ -62,9 +63,9 @@ class ProcessMediaUploadJob implements ShouldQueue
                 'videos_count' => count($processedVideos)
             ]);
 
-            // If post was set to publish immediately, trigger publishing
+            // If post was set to publish immediately, send to n8n
             if ($this->post->status === 'ready_to_publish' && !$this->post->schedule_time) {
-                PublishPostJob::dispatch($this->post, $this->post->social_medias ?? []);
+                SendToN8nJob::dispatch($this->post);
             }
 
         } catch (\Exception $e) {
