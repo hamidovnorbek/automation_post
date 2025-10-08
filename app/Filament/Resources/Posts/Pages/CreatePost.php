@@ -7,6 +7,7 @@ use App\Models\Post;
 use Filament\Actions;
 use Filament\Resources\Pages\CreateRecord;
 use Filament\Notifications\Notification;
+use Illuminate\Support\Facades\Storage;
 
 class CreatePost extends CreateRecord
 {
@@ -15,6 +16,35 @@ class CreatePost extends CreateRecord
     /**
      * Handle the form submission with immediate feedback
      */
+
+
+
+    protected function mutateFormDataBeforeCreate(array $data): array
+    {
+        // ✅ Fix paths for photos
+        if (!empty($data['photos'])) {
+            $data['photos'] = collect($data['photos'])
+                ->map(function ($path) {
+                    $path = ltrim($path, '/'); // remove leading slash
+                    return Storage::disk('s3')->url($path);
+                })
+                ->toArray();
+        }
+
+        // ✅ Fix paths for videos
+        if (!empty($data['videos'])) {
+            $data['videos'] = collect($data['videos'])
+                ->map(function ($path) {
+                    $path = ltrim($path, '/');
+                    return Storage::disk('s3')->url($path);
+                })
+                ->toArray();
+        }
+
+//        dd($data);
+
+        return $data;
+    }
     protected function handleRecordCreation(array $data): Post
     {
         // Show immediate feedback

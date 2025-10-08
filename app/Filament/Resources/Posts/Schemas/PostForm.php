@@ -11,6 +11,8 @@ use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Placeholder;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 class PostForm
 {
@@ -80,7 +82,7 @@ class PostForm
                                     }
                                     return '🚀 This post will be processed and published immediately after saving';
                                 }
-                                
+
                                 $status = match($record->status) {
                                     'draft' => '📝 Draft',
                                     'processing_media' => '⏳ Processing media files...',
@@ -91,18 +93,18 @@ class PostForm
                                     'failed' => '❌ Failed',
                                     default => '📝 Draft'
                                 };
-                                
-                                $progress = $record->total_platforms > 0 
+
+                                $progress = $record->total_platforms > 0
                                     ? "({$record->published_platforms}/{$record->total_platforms} platforms)"
                                     : '';
-                                
+
                                 $additionalInfo = '';
                                 if ($record->status === 'processing_media') {
                                     $additionalInfo = ' - Files are being uploaded to S3 and optimized';
                                 } elseif ($record->status === 'publishing') {
                                     $additionalInfo = ' - Publishing to social media platforms';
                                 }
-                                
+
                                 return "{$status} {$progress}{$additionalInfo}";
                             })
                             ->columnSpanFull(),
@@ -115,34 +117,37 @@ class PostForm
                     ->schema([
                         FileUpload::make('photos')
                             ->label('Photos')
-                            ->multiple()
-                            ->image()
-                            ->reorderable()
-                            ->maxFiles(10)
-                            ->maxSize(5120) // 5MB
-                            ->directory('posts/photos')
-                            ->disk('public') // Use public disk for now, can switch to S3 later
+                            ->disk('s3')
+                            ->directory('photos')
                             ->visibility('public')
-                            ->helperText('Max 10 photos, 5MB each. Auto-uploaded for Instagram compatibility. Supports JPG, PNG, WebP')
-                            ->uploadingMessage('Uploading images...')
+                            ->image()
+                            ->multiple()
+                            ->reorderable()
+                            ->preserveFilenames()
+                            ->maxFiles(10)
+                            ->maxSize(5120)
+                            ->getUploadedFileNameForStorageUsing(
+                                fn (TemporaryUploadedFile $file) => uniqid() . '.' . $file->getClientOriginalExtension()
+                            )
                             ->columnSpanFull(),
 
                         FileUpload::make('videos')
                             ->label('Videos')
-                            ->multiple()
-                            ->acceptedFileTypes(['video/mp4', 'video/mov', 'video/avi'])
-                            ->maxFiles(5)
-                            ->maxSize(51200) // 50MB
-                            ->directory('posts/videos')
-                            ->disk('public') // Use public disk for now, can switch to S3 later
+                            ->disk('s3')
+                            ->directory('photos')
                             ->visibility('public')
-                            ->helperText('Max 5 videos, 50MB each. Auto-uploaded for Instagram compatibility. Supports MP4, MOV, AVI')
+                            ->multiple()
+                            ->acceptedFileTypes(['video/mp4', 'video/mov', 'video/webm'])
+                            ->maxSize(102400) // ~100MB
                             ->uploadingMessage('Uploading videos...')
-                            ->columnSpanFull(),
+                            ->helperText('MP4, MOV, WEBM up to 100MB')
+                            ->columnSpanFull()
+                            ->getUploadedFileNameForStorageUsing(
+                                fn (TemporaryUploadedFile $file) => uniqid() . '.' . $file->getClientOriginalExtension()
+                            )
+
                     ])
-                    ->columns(1)
-                    ->collapsible()
-                    ->collapsed(),
-            ]);
+
+                ]);
     }
 }
