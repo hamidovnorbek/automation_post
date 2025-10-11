@@ -14,6 +14,7 @@ class Post extends Model
     use HasFactory;
 
     protected $fillable = [
+        'user_id',
         'title',
         'body',
         'photos',
@@ -55,14 +56,14 @@ class Post extends Model
     {
         $photos = $this->photos ?? [];
         $videos = $this->videos ?? [];
-        
+
         // Check if any files are still temporary Livewire files
         foreach (array_merge($photos, $videos) as $file) {
             if (!str_starts_with($file, 'http') && !str_contains($file, 's3.amazonaws.com')) {
                 return true; // Found a temporary file
             }
         }
-        
+
         return false;
     }
 
@@ -97,6 +98,11 @@ class Post extends Model
     public function socials()
     {
         return $this->hasMany(PostSocial::class);
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function getStatusColorAttribute()
@@ -145,7 +151,7 @@ class Post extends Model
     {
         try {
             $webhookUrl = config('services.n8n.webhook_url');
-            
+
             if (!$webhookUrl) {
                 Log::warning("Webhook URL not configured, skipping webhook for post {$post->id}");
                 return;

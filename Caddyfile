@@ -1,0 +1,15 @@
+{
+    auto_https disable_redirects
+}
+
+localhost:443 {
+    root * /home/ozodbek/LARAVEL_PROJECTS/automation_post/public
+    encode gzip
+
+    php_fastcgi unix//run/php/php8.3-fpm.sock {
+        try_files {path} /index.php
+    }
+
+    file_server
+    tls /home/ozodbek/LARAVEL_PROJECTS/automation_post/localhost+2.pem /home/ozodbek/LARAVEL_PROJECTS/automation_post/localhost+2-key.pem
+}

@@ -3,12 +3,12 @@
 namespace App\Jobs;
 
 use App\Models\Post;
+use App\Services\SocialMediaService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class SendToN8nJob implements ShouldQueue
@@ -25,11 +25,14 @@ class SendToN8nJob implements ShouldQueue
         $this->onQueue('default');
     }
 
-    public function handle(): void
+    public function handle(SocialMediaService $socialMediaService): void
     {
         try {
-
-            Log::info('Sending post to n8n', ['post_id' => $this->post->id]);
+            Log::info('Sending post to n8n with user credentials', [
+                'post_id' => $this->post->id,
+                'user_id' => $this->post->user_id,
+                'platforms' => $this->post->social_medias
+            ]);
 
             // Prepare post data for n8n
             $postData = [
@@ -47,84 +50,82 @@ class SendToN8nJob implements ShouldQueue
 
             // Get n8n webhook URL from environment
             $n8nWebhookUrl = config('services.n8n.webhook_url');
-            
+
             if (!$n8nWebhookUrl) {
                 throw new \Exception('n8n webhook URL not configured');
             }
 
-            Log::info('Sending HTTP request to n8n', [
-                'url' => $n8nWebhookUrl,
-                'post_id' => $this->post->id
-            ]);
+            // Load user with social accounts for credential access
+            $user = $this->post->user()->with('socialAccounts')->first();
 
-            // Send POST request to n8n
-            $response = Http::timeout(30)
-                ->retry(2, 1000) // Retry 2 times with 1 second delay
-                ->post($n8nWebhookUrl, [
-                    'action' => 'publish_post',
-                    'post' => $postData,
-                    'timestamp' => now()->toISOString(),
+            if (!$user) {
+                throw new \Exception('Post user not found');
+            }
+
+            // Send post with user credentials to n8n
+            $result = $socialMediaService->sendPostToN8n($postData, $user);
+
+            if ($result['success']) {
+                // Update post status to indicate successful send to n8n
+                $this->post->update([
+                    'status' => 'sent_to_n8n',
+                    'publication_status' => array_merge($this->post->publication_status ?? [], [
+                        'sent_to_n8n_at' => now()->toISOString(),
+                        'n8n_response' => $result['response'] ?? null,
+                    ])
                 ]);
 
-            if ($response->successful()) {
-                // Update post status only if post exists in database
-                if ($this->post->exists) {
-                    $this->post->update([
-                        'status' => 'sent_to_n8n',
-                        'publication_status' => [
-                            'sent_to_n8n_at' => now()->toISOString(),
-                            'n8n_response' => $response->json()
-                        ]
-                    ]);
-                }
-
-                Log::info('Post sent to n8n successfully', [
+                Log::info('Post successfully sent to n8n', [
                     'post_id' => $this->post->id,
-                    'response_status' => $response->status(),
-                    'response_body' => $response->json()
+                    'user_id' => $user->id,
+                    'platforms_with_credentials' => array_keys($result['credentials'] ?? [])
                 ]);
             } else {
-                throw new \Exception("n8n webhook failed with status {$response->status()}: {$response->body()}");
+                throw new \Exception($result['error'] ?? 'Unknown error sending to n8n');
             }
 
         } catch (\Exception $e) {
             Log::error('Failed to send post to n8n', [
                 'post_id' => $this->post->id,
-                'error' => $e->getMessage()
+                'user_id' => $this->post->user_id,
+                'error' => $e->getMessage(),
+                'attempt' => $this->attempts()
             ]);
 
-            // Only update database if post exists
-            if ($this->post->exists) {
+            // Update post status to failed if all retries exhausted
+            if ($this->attempts() >= $this->tries) {
                 $this->post->update([
                     'status' => 'failed',
-                    'publication_status' => [
-                        'error' => 'Failed to send to n8n: ' . $e->getMessage(),
-                        'failed_at' => now()->toISOString()
-                    ]
+                    'publication_status' => array_merge($this->post->publication_status ?? [], [
+                        'failed_at' => now()->toISOString(),
+                        'error' => $e->getMessage(),
+                        'attempts' => $this->attempts()
+                    ])
                 ]);
             }
 
+            // Re-throw to trigger job retry
             throw $e;
         }
     }
 
     public function failed(\Throwable $exception): void
     {
-        Log::error('SendToN8nJob permanently failed', [
+        Log::error('SendToN8nJob failed permanently', [
             'post_id' => $this->post->id,
-            'exception' => $exception->getMessage(),
-            'trace' => $exception->getTraceAsString()
+            'user_id' => $this->post->user_id,
+            'error' => $exception->getMessage(),
+            'attempts' => $this->attempts()
         ]);
 
-        // Only update database if post exists
-        if ($this->post->exists) {
-            $this->post->update([
-                'status' => 'failed',
-                'publication_status' => [
-                    'error' => 'Job permanently failed: ' . $exception->getMessage(),
-                    'failed_at' => now()->toISOString()
-                ]
-            ]);
-        }
+        // Mark post as failed
+        $this->post->update([
+            'status' => 'failed',
+            'publication_status' => array_merge($this->post->publication_status ?? [], [
+                'failed_permanently_at' => now()->toISOString(),
+                'final_error' => $exception->getMessage(),
+                'total_attempts' => $this->attempts()
+            ])
+        ]);
     }
 }
